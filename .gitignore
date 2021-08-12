@@ -1,1 +1,4 @@
-matrixbuilds.txt
+test.py
+*.txt
+*.ini
+*.cfg
