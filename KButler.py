@@ -255,6 +255,9 @@ def remove_item(entry_number): # works with local file
             f.write(line)
     print("Build Removed Successfully!")
 
+def configure_build(): # TODO
+    pass
+
 def main():
     while True:
         try:
@@ -263,9 +266,10 @@ def main():
             print("~" * 25)
             print("1. Prep Kodi")
             print("2. Upload Build")
-            print("3. Exit")
+            print("3. Configure Build File")
+            print("4. Exit")
             print("~" * 25)
-            choice = valid_choice("Option: ", 3)
+            choice = valid_choice("Option: ", 4)
             if choice == 1:
                 prep_kodi()
             elif choice == 2:
@@ -278,6 +282,8 @@ def main():
                 floc = (f'/{name}.zip')
                 url = upload_build(access_token, fname, floc)
                 print(f'\nDone! URL: {url}\n')   # Print downloadable URL
+            elif choice == 3:
+                configure_build()
             else:
                 print("Exiting Program.\n")
                 break
@@ -288,7 +294,7 @@ def main():
 if __name__=='__main__':
     installed = os.path.isdir(os.path.expandvars('%appdata%\Kodi'))
     if installed:
-        compare_db_builds()
+        main()
     else:
         print("Kodi Not Installed. Exiting.")
         exit
