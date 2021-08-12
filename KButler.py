@@ -20,6 +20,9 @@ access_token = os.environ.get('dbkey')
 # Point to URL of build.txt. Ex: 'http://example.com/build.txt'
 build_txt = os.environ.get('matrixbuilds')
 
+# Path to local file (where it will be downloaded to edit)
+buildfile = 'matrixbuilds.txt'
+
 def valid_choice(msg, exit_opt=10): # returns an integer
     while True:
         try:
@@ -47,6 +50,9 @@ def valid_yn(msg): # returns 'Y' or 'N'
                 raise ValueError
         except ValueError:
             print(f'Please choose [Y]es or [N]o.')
+
+def create_database():
+    pass
 
 def kill_kodi():
     c = WMI()
@@ -112,16 +118,24 @@ def zip_kodi(dirPath=None, zipFilePath=os.path.expandvars('%userprofile%\Desktop
     return zipFilePath
 
 def get_builds(build_txt):
-    builds = []
+    builds = {}
     with get(build_txt, stream=True) as r:
         soup = BeautifulSoup(r.content, 'lxml')
         data = soup.text.split('\n') 
         for line in data:
             cleaned = line.split('=')
             if 'name' in cleaned:
-                string = line.strip().split('name=')[1]
-                name = string.removeprefix('"').removesuffix('"')
-                builds.append(name)
+                name = line.strip().split('name=')[1].removeprefix('"').removesuffix('"')
+                builds[name] = {'version': None, 'url': None, 'description': None}
+            if 'version' in cleaned:
+                version = line.strip().split('version=')[1].removeprefix('"').removesuffix('"')
+                builds[name] = {'version': version, 'url': None, 'description': None}
+            if 'url' in cleaned:
+                url = line.strip().split('url=')[1].removeprefix('"').removesuffix('"')
+                builds[name] = {'version': version, 'url': url, 'description': None}
+            if 'description' in cleaned:
+                description = line.strip().split('description=')[1].removeprefix('"').removesuffix('"')
+                builds[name] = {'version': version, 'url': url, 'description': description}
     return builds
 
 def return_option_from_builds():
@@ -135,7 +149,12 @@ def return_option_from_builds():
     option = valid_choice("Option: ", idx)
     for idx, items in enumerate(builds):
         if option == idx + 1:
-            return items
+            name = items
+
+    version = builds[name]['version']
+    url = builds[name]['url']
+    description = builds[name]['description']
+    return name, version, url, description
 
 def prep_kodi():
     print("\nPrepping Kodi Build")
@@ -191,6 +210,17 @@ def upload_build(access_token, file_from, file_to, timeout=900, chunk_size=4 * 1
     os.remove(file_from)
     return dl_url
 
+def upload_build_file(host, username, password, localfile, remotefile):
+    transport = paramiko.Transport((host, 22))
+    transport.connect(username=username, password=password)
+    sftp = paramiko.SFTPClient.from_transport(transport)
+    if sftp.put(localfile, remotefile):
+        sftp.close()
+        transport.close()
+        return True
+    else:
+        return False
+
 def get_db_files():
     dbx = dropbox.Dropbox(access_token, timeout=900)
     entries = dbx.files_list_folder('').entries
@@ -200,21 +230,30 @@ def get_db_files():
     return file_list
 
 def compare_db_builds():  # TODO
-    dbox = get_db_files()
-    builds = get_builds(build_txt)
-    for entries in dbox:
-        if entries not in builds:
-            print(entries)
-        else:
-            print("All Set!")
-    print()
-    print(f"Dropbox: {dbox}")
-    print(f"Builds: {builds}")
+    # dbox = get_db_files()
+    # builds = get_builds(build_txt)
+    pass
 
 def dl_builds_file():
-    # /home/spoked/spoked.xyz/repo
-    
+    pass
 
+def remove_item(entry_number): # works with local file
+    with open(buildfile, "r+") as f:
+        contents = f.read()
+        f.seek(0)
+        test = contents.split("\n\n")
+        for i in test:
+            if i != test[entry_number]:
+                f.write(i + "\n\n")
+        f.truncate()
+    with open(buildfile, "r+") as f:
+        lines = f.read()
+    while lines.endswith("\n\n"):
+        lines = lines[:-1]
+    with open(buildfile,  'w') as f:
+        for line in lines:
+            f.write(line)
+    print("Build Removed Successfully!")
 
 def main():
     while True:
