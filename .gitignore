@@ -2,3 +2,4 @@ test.py
 *.txt
 *.ini
 *.cfg
+!kbutler_example.cfg
