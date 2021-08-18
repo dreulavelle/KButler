@@ -1,27 +1,52 @@
-import os
+from os import path, environ, chdir, listdir, kill, remove, walk
 from re import sub
 from shutil import rmtree
 from signal import SIGTERM
 from time import sleep
 from zipfile import ZIP_DEFLATED, ZipFile
-
-# Must Have These Installed
-import dropbox, paramiko
+from paramiko import Transport, SFTPClient
+from dropbox import Dropbox, exceptions, files
 from bs4 import BeautifulSoup
 from requests import get
 from tqdm import tqdm
 from wmi import WMI
+from configparser import ConfigParser
 
-# To get started: pip install dropbox requests zipfile BeautifulSoup4 tqdm
+try: # Set Variables. [WARNING] ONLY change if you know what you're doing!
+    kb_version = '0.6.5'
+    config = ConfigParser()
+    config.read('config.ini')
+    kodipath = path.expandvars('%appdata%\Kodi\\')
+    user = path.expandvars('%userprofile%')
+    userdata_path = path.expandvars('%appdata%\Kodi\\userdata\\')
+    addons_path = path.expandvars('%appdata%\Kodi\\addons\\')
+    desktop = path.expandvars('%userprofile%\Desktop\\')
+    retain_base = ['addons', 'userdata']
+    remove_addons = ['packages', 'temp']
+    remove_userdata = ['Thumbnails', 'Savestates', 'playlists', 'library']
+    uploadzip = int(config['SETTINGS']['uploadzip']) # TODO
+    uploadbuildtxt = int(config['SETTINGS']['uploadbuildtxt']) # TODO
+    access_token = config['DROPBOX']['access_token']
+    remote_builds = config['BUILDFILE']['remote_build_txt']
+    localbuild = config['BUILDFILENAME']['localbuild']
+    kodi_host = config['SFTP']['kodi_host']  
+    kodi_username = config['SFTP']['kodi_username'] 
+    kodi_password = config['SFTP']['kodi_password']
+    kodi_remotepath = config['SFTP']['kodi_remotepath']
+    temp_dir = environ.get('TEMP')
+    temp_build = path.join(temp_dir + "\\builds.txt")
+except: 
+    print('[ERROR] config.ini File Missing. Exiting!')
+    print('You can get an example config.ini at:')
+    print('###  https://github.com/dreulavelle/KButler/blob/KButler/config_example.ini')
+    print('Save this to the same directory as this program and rename to config.ini')
+    print('[WARNING] Make sure to edit the values! Then you should be all set!')
+    exit()
 
-# Point to Dropbox Access Key Token. Ex: 'key'
-access_token = os.environ.get('dbkey')
-
-# Point to URL of build.txt. Ex: 'http://example.com/build.txt'
-build_txt = os.environ.get('matrixbuilds')
-
-# Path to local file (where it will be downloaded to edit)
-buildfile = 'matrixbuilds.txt'
+if path.isfile(temp_build):
+    temp_exists = True
+else:
+    temp_exists = False
 
 def valid_choice(msg, exit_opt=10): # returns an integer
     while True:
@@ -55,142 +80,134 @@ def create_database():
     pass
 
 def kill_kodi():
-    c = WMI()
-    for process in c.Win32_Process():
+    c = WMI().Win32_Process()
+    for process in c:
         if 'kodi' in process.Name:
-            print("- Killing Kodi Process")
-            x = os.kill(process.ProcessId, SIGTERM)
+            print('- Killing Kodi Process')
+            x = kill(process.ProcessId, SIGTERM)
         else:
             pass
     sleep(3)
 
 def clean_kodi():
-    kodipath = os.path.expandvars('%appdata%\Kodi\\')
-    userdata_path = os.path.expandvars('%appdata%\Kodi\\userdata\\')
-    addons_path = os.path.expandvars('%appdata%\Kodi\\addons\\')
-    desktop = os.path.expandvars('%userprofile%\Desktop\\')
-    retain_base = ["addons", "userdata"]
-    remove_addons = ["packages", "temp"]
-    remove_userdata = ["Thumbnails", "Savestates", "playlists", "library"]
-
-    print("- Base Files")
-    os.chdir(kodipath)
-    for item in os.listdir(kodipath):
+    print('- Base Files')
+    chdir(kodipath)
+    for item in listdir(kodipath):
         if item not in retain_base:
             try:
-                os.remove(item)
+                remove(item)
             except:
                 rmtree(kodipath + item)
-
-    print("- Addons Path Files")
-    os.chdir(addons_path)
-    for item in os.listdir(addons_path):
+    print('- Addons Path Files')
+    chdir(addons_path)
+    for item in listdir(addons_path):
         if item in remove_addons:
             rmtree(addons_path + item)
-
-    print("- Userdata Path Files")
-    os.chdir(userdata_path)
-    for item in os.listdir(userdata_path):
+    print('- Userdata Path Files')
+    chdir(userdata_path)
+    for item in listdir(userdata_path):
         if item in remove_userdata:
             rmtree(userdata_path + item)
-    
-    os.chdir(desktop)
-    print("Cleaning Done\n")
+    chdir(desktop)
+    print('Cleaning Done\n')
 
-def zip_kodi(dirPath=None, zipFilePath=os.path.expandvars('%userprofile%\Desktop')):
-    parentDir, dirToZip = os.path.split(dirPath)
-
+def zip_kodi(dirPath=None, zipFilePath=path.expandvars('%userprofile%\Desktop')):
+    parentDir, dirToZip = path.split(dirPath)
     def trimPath(path):
-        archivePath = path.replace(parentDir, "", 1)
+        archivePath = path.replace(parentDir, '', 1)
         if parentDir:
-            archivePath = archivePath.replace(os.path.sep, "", 1)
-        archivePath = archivePath.replace(dirToZip + os.path.sep, "", 1)
-        return os.path.normcase(archivePath)
-
-    print("- Writing Files to Zip")
-    with ZipFile(zipFilePath, "w",compression=ZIP_DEFLATED) as zip_file:
-        for (archiveDirPath, dirNames, fileNames) in os.walk(dirPath):
+            archivePath = archivePath.replace(path.sep, '', 1)
+        archivePath = archivePath.replace(dirToZip + path.sep, '', 1)
+        return path.normcase(archivePath)
+    print('- Writing Files to Zip')
+    with ZipFile(zipFilePath, 'w',compression=ZIP_DEFLATED) as zip_file:
+        for (archiveDirPath, dirNames, fileNames) in walk(dirPath):
             for fileName in fileNames:
-                filePath = os.path.join(archiveDirPath, fileName)
+                filePath = path.join(archiveDirPath, fileName)
                 zip_file.write(filePath, trimPath(filePath))
-
     print('Kodi Build Created!')
     return zipFilePath
 
-def get_builds(build_txt):
-    builds = {}
-    with get(build_txt, stream=True) as r:
+def fetch_builds():
+    entries = {}
+    with get(remote_builds, stream=True) as r:
         soup = BeautifulSoup(r.content, 'lxml')
-        data = soup.text.split('\n') 
-        for line in data:
-            cleaned = line.split('=')
-            if 'name' in cleaned:
-                name = line.strip().split('name=')[1].removeprefix('"').removesuffix('"')
-                builds[name] = {'version': None, 'url': None, 'description': None}
-            if 'version' in cleaned:
-                version = line.strip().split('version=')[1].removeprefix('"').removesuffix('"')
-                builds[name] = {'version': version, 'url': None, 'description': None}
-            if 'url' in cleaned:
-                url = line.strip().split('url=')[1].removeprefix('"').removesuffix('"')
-                builds[name] = {'version': version, 'url': url, 'description': None}
-            if 'description' in cleaned:
-                description = line.strip().split('description=')[1].removeprefix('"').removesuffix('"')
-                builds[name] = {'version': version, 'url': url, 'description': description}
-    return builds
+        contents = soup.text.splitlines() 
+        current_name = ''
+        for c in contents:
+            if len(c.strip()) > 0:
+                data = c.split('=')
+                if data[0] == 'name':
+                    entries[data[1]] = {}
+                    current_name = data[1]
+                else:
+                    data[1] = sub(r'\?dl', '?dl=1"', data[1])
+                    entries[current_name][data[0]] = data[1]
+    return entries
 
-def return_option_from_builds():
-    print("\nPlease Select an Item")
-    print("~" * 25)
-    builds = get_builds(build_txt)
+def fetch_urls():
+    urls = []
+    builds = fetch_builds()
+    print("\nCurrent Builds:")
+    for n, data in builds.items():
+        version = data['version']
+        url = data['url']
+        print(f'{n} [{version}] URL: {url}')
+        urls.append(url)
+    return urls
+
+def return_option_from_builds(show=False):
+    # returns: index, name, version, url, description
+    print('\nPlease Select an Item')
+    print('~' * 25)
+    builds = fetch_builds()
     for idx, item in enumerate(builds):
         idx += 1
-        print(f"{idx}. {item}")
-    print("~" * 25)
-    option = valid_choice("Option: ", idx)
+        print(f'{idx}. {item}')
+    print('~' * 25)
+    option = valid_choice('Option: ', idx)
     for idx, items in enumerate(builds):
         if option == idx + 1:
             name = items
-
+    
+    index = option - 1
     version = builds[name]['version']
     url = builds[name]['url']
     description = builds[name]['description']
-    return name, version, url, description
+    if show:
+        stripped = name.removeprefix('"').removesuffix('"')
+        print(f'\nBuild: {stripped}\nCurrent Version: {version}')
+    return index, name, version, url, description
 
-def prep_kodi():
-    print("\nPrepping Kodi Build")
-    print("- Checking Kodi Process")
-    kill_kodi()
-    print("- Cleaning Kodi Folder")
-    clean_kodi()
-
-def upload_build(access_token, file_from, file_to, timeout=900, chunk_size=4 * 1024 * 1024):
-    kodipath = os.path.expandvars('%appdata%\Kodi')
-    user = os.path.expandvars('%userprofile%')
-    zipfilename = os.path.join(user, 'Desktop', file_from)
-    print("\nCreating Kodi Build")
+def dropbox_upload(file_from, file_to, timeout=900, chunk_size=4 * 1024 * 1024):
+    # dropbox support
+    kodipath = path.expandvars('%appdata%\Kodi')
+    user = path.expandvars('%userprofile%')
+    zipfilename = path.join(user, 'Desktop', file_from)
+    print('\nCreating Kodi Build')
     zip_kodi(kodipath, zipFilePath=zipfilename)
-    desktop = os.path.expandvars('%userprofile%\Desktop\\')
-    os.chdir(desktop)
-    file_size = os.path.getsize(file_from)
+    desktop = path.expandvars('%userprofile%\Desktop\\')
+    chdir(desktop)
+    file_size = path.getsize(file_from)
     chunk_size = 4 * 1024 * 1024
-    dbx = dropbox.Dropbox(access_token, timeout=timeout)
+    dbx = Dropbox(timeout=timeout)
     try:
         dbx.files_delete_v2(file_to)    # Tries to upload files less than 150mb.
-    except dropbox.exceptions.ApiError: 
+    except exceptions.ApiError: 
         pass                            # Else, continues to open session to upload larger files.
-    with open(file_from, "rb") as f:
-        file_size = os.path.getsize(file_from)
+    with open(file_from, 'rb') as f:
+        file_size = path.getsize(file_from)
         chunk_size = 4 * 1024 * 1024
         if file_size <= chunk_size:
             dbx.files_upload(f.read(), file_to)
         else:
-            with tqdm(total=file_size, desc="Uploading Build", miniters=-1, mininterval=1, bar_format='{l_bar}') as pbar:
+            with tqdm(total=file_size, desc='Uploading Build', miniters=-1, mininterval=1, bar_format='{l_bar}') as pbar:
                 upload_session_start_result = dbx.files_upload_session_start(f.read(chunk_size))
                 pbar.update(chunk_size)
-                cursor = dropbox.files.UploadSessionCursor(
+                cursor = files.UploadSessionCursor(
                     session_id=upload_session_start_result.session_id,
                     offset=f.tell())
-                commit = dropbox.files.CommitInfo(path=file_to)
+                commit = files.CommitInfo(path=file_to)
                 while f.tell() < file_size:
                     if (file_size - f.tell()) <= chunk_size:
                         dbx.files_upload_session_finish(f.read(chunk_size), cursor, commit)
@@ -202,99 +219,196 @@ def upload_build(access_token, file_from, file_to, timeout=900, chunk_size=4 * 1
                         )
                         cursor.offset = f.tell()
                     pbar.update(chunk_size)
+    # link = dbx.get_shared_link_metadata(file_to)
+    # url = link.url
+    # dl_url = sub(r'\?dl\=0', '?dl=1', url)
+    # print('Removing Temp Zip File')
+    # remove(file_from)
+    # return dl_url    <---- currently not working as intended. generates new share url when one already exists. #TODO
 
-    link = dbx.sharing_create_shared_link(file_to)
-    url = link.url
-    dl_url = sub(r"\?dl\=0", "?dl=1", url)
-    print("Removing Local Zip File")
-    os.remove(file_from)
-    return dl_url
-
-def upload_build_file(host, username, password, localfile, remotefile):
-    transport = paramiko.Transport((host, 22))
-    transport.connect(username=username, password=password)
-    sftp = paramiko.SFTPClient.from_transport(transport)
-    if sftp.put(localfile, remotefile):
-        sftp.close()
-        transport.close()
-        return True
+def upload_build_file():
+    if temp_exists:
+        transport = Transport((kodi_host, 22))
+        transport.connect(kodi_username, kodi_password)
+        sftp = SFTPClient.from_transport(transport)
+        if sftp.put(temp_build, kodi_remotepath):
+            sftp.close()
+            transport.close()
+            print("Successfuly Updated Builds")
+        else:
+            print("[ERROR] Failed To Upload File")
     else:
-        return False
+        print("[ERROR] No Temp Build File!")
 
-def get_db_files():
-    dbx = dropbox.Dropbox(access_token, timeout=900)
-    entries = dbx.files_list_folder('').entries
-    file_list = []
-    for entry in entries:
-        file_list.append(entry.name)
-    return file_list
+def download_builds_file():
+    resp = get(remote_builds)
+    with open(temp_build, 'w') as f:
+        f.write(resp.text)
+    sleep(1)
+    return
 
-def compare_db_builds():  # TODO
-    # dbox = get_db_files()
-    # builds = get_builds(build_txt)
+def delete_build_file():
+    if temp_exists:
+        remove(temp_build)
+    else:
+        print("[ERROR] No Temp Build File!")
+
+def add_build():  # TODO
+    if not temp_exists:
+        download_builds_file()
+    with open(temp_build, 'a') as f:
+        name = (f'"{input("Build Name: ").title()}"')
+        print(name) # for testing purposes
+        version = input('Version: ')
+        url = input('Paste URL: ')
+        minor = "http://"
+        gui = "http://"
+        kodi = "19.0"
+        theme = "http://"
+        icon = input('Paste Icon URL: ').title()
+        fanart = input('Paste Fanart URL: ')
+        preview = "http://"
+        adult = input('Adult content? yes/no: ').lower()
+        info = "http://"
+        description = input('Write a description: ')
+        f.write(f'\n\nname="{name}"\nversion="{version}"') # TODO
+    print(f'\nBuild {name} Added Successfully!')
+
+def remove_build(entries=fetch_builds()):  # works with local temp/build.txt
+    name = return_option_from_builds()[1]
+    del entries[name]
+    write_build(entries)
+    build = name.removeprefix('"').removesuffix('"')
+    print(f"Build {build} Removed Successfully!")
+
+def write_build(entries):
+    if len(entries) > 0:
+        write_list = []
+        for e, v in entries.items():
+            name = f'\nname={e}\n'
+            write_list.append(name)
+            for d, t in v.items():
+                entry = f'{d}={t}\n'
+                write_list.append(entry)
+        with open(temp_build, 'w') as f:
+            f.writelines(write_list)
+    else:
+        print("No Entries Found. No File Possibly?")
+
+def builds_qty(show=False):
+    lngth = len(fetch_builds())
+    if show:
+        print(lngth)
+    return lngth
+
+def settings():
     pass
 
-def dl_builds_file():
-    pass
-
-def remove_item(entry_number): # works with local file
-    with open(buildfile, "r+") as f:
-        contents = f.read()
-        f.seek(0)
-        test = contents.split("\n\n")
-        for i in test:
-            if i != test[entry_number]:
-                f.write(i + "\n\n")
-        f.truncate()
-    with open(buildfile, "r+") as f:
-        lines = f.read()
-    while lines.endswith("\n\n"):
-        lines = lines[:-1]
-    with open(buildfile,  'w') as f:
-        for line in lines:
-            f.write(line)
-    print("Build Removed Successfully!")
+def change_entry():
+    while True:
+        print()
+        print('~' * 25)
+        print('  Make Changes To Build  ')
+        print('~' * 25)
+        print('1. Change Name')
+        print('2. Change Version')
+        print('3. Change URL')
+        print('4. Change Description')
+        print('5. Exit')
+        print('~' * 25)
+        choice = valid_choice('Option: ', 5)
+        if choice == 1:
+            pass
+        elif choice == 2:
+            pass
+        elif choice == 3:
+            pass
+        elif choice == 4:
+            pass
+        else:
+            print('\nExiting KButler.\n')
+            break
 
 def configure_build(): # TODO
-    pass
+    while True:
+        print()
+        print('~' * 25)
+        print('  Configure Build  ')
+        print('~' * 25)
+        print('1. Add New Build')
+        print('2. Remove Build')
+        print('3. Show Build Info')
+        print('4. Change Entry')
+        print('5. Upload Changes')
+        print('6. Discard Changes')
+        print('7. Exit')
+        print('~' * 25)
+        choice = valid_choice('Option: ', 7)
+        if choice == 1:
+            add_build()
+        elif choice == 2:
+            remove_build()
+        elif choice == 3:
+            fetch_urls()
+        elif choice == 4:
+            change_entry()
+        elif choice == 5:
+            if upload_build_file():
+                print("Successfuly Updated Builds")
+            else:
+                print("[ERROR] Failed To Update Builds!")
+        elif choice == 6:
+            delete_build_file()
+        else:
+            print('\nExiting KButler.\n')
+            break
 
 def main():
     while True:
-        try:
-            print("~" * 25)
-            print("  Kodi Butler V0.9.4  ")
-            print("~" * 25)
-            print("1. Prep Kodi")
-            print("2. Upload Build")
-            print("3. Configure Build File")
-            print("4. Exit")
-            print("~" * 25)
-            choice = valid_choice("Option: ", 4)
-            if choice == 1:
-                prep_kodi()
-            elif choice == 2:
-                choice = valid_yn("Create New Build Name? Y/N: ").upper()
-                if choice == 'Y':
-                    name = input("Build Name: ")
-                else:
-                    name = return_option_from_builds()
-                fname = (f'{name}.zip')
-                floc = (f'/{name}.zip')
-                url = upload_build(access_token, fname, floc)
-                print(f'\nDone! URL: {url}\n')   # Print downloadable URL
-            elif choice == 3:
-                configure_build()
+        print('~' * 25)
+        print(f'  Kodi Butler v{kb_version}  ')
+        print('~' * 25)
+        print('1. Clean Kodi Files')
+        print('2. Upload Build')
+        print('3. Configure Builds')
+        print('4. Show Builds Quantity')
+        print('5. Settings')
+        print('6. Exit')
+        print('~' * 25)
+        choice = valid_choice('Option: ', 6)
+        if choice == 1:
+            print('\nPrepping Kodi Build')
+            print('- Checking Kodi Process')
+            kill_kodi()
+            print('- Cleaning Kodi Folder')
+            clean_kodi()
+        elif choice == 2:
+            choice = valid_yn('Create New Build Name? Y/N: ').upper()
+            if choice == 'Y':
+                name = input('Build Name: ')
             else:
-                print("Exiting Program.\n")
-                break
-        except KeyboardInterrupt:
-            print("\nExiting Program.\n") 
+                name = return_option_from_builds()[1]
+            fname = (f'{name}.zip')
+            floc = (f'/{name}.zip')
+            url = dropbox_upload(fname, floc)
+            # print(f'\nDone! URL: {url}\n')   # Print downloadable URL
+        elif choice == 3:
+            configure_build()
+        elif choice == 4:
+            print(f'\nThere are currently {builds_qty()} Builds!\n')
+        elif choice == 5:
+            settings()
+        else:
             break
 
 if __name__=='__main__':
-    installed = os.path.isdir(os.path.expandvars('%appdata%\Kodi'))
+    installed = path.isdir(path.expandvars('%appdata%\Kodi'))
     if installed:
-        main()
+        try:
+            main()
+        except KeyboardInterrupt as ki:
+            print('\nExiting KButler.\n') 
+            exit()
     else:
-        print("Kodi Not Installed. Exiting.")
-        exit
+        print('[ERROR] Kodi Not Installed. Exiting.')
+        exit()
