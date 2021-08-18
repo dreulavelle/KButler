@@ -1,0 +1,6 @@
+beautifulsoup4
+dropbox
+paramiko
+requests
+tqdm
+wmi
