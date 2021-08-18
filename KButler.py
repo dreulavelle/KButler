@@ -1,5 +1,6 @@
 from os import path, environ, chdir, listdir, kill, remove, walk
 from re import sub
+import psutil
 from shutil import rmtree
 from signal import SIGTERM
 from time import sleep
