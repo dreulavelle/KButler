@@ -1,11 +1,11 @@
 # Project Files
-test.py
 *.txt
 *.ini
 *.cfg
 *.log
 !config_example.ini
 !requirements.txt
+test*
 resources
 logs
 

@@ -3,4 +3,4 @@ dropbox
 paramiko
 requests
 tqdm
-wmi
+psutil
