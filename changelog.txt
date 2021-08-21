@@ -1,0 +1,9 @@
+Version: 0.6.7
+- Initial working version. (Unreleased still) 
+- Features include:
+--- Menu Driven Program for Community Developers that create builds they share!
+--- Cleaning and Prepping Kodi to be zipped.
+--- Cleaning Database by removing old DB files. (Still making improvements)
+--- Zipping/Uploading to Dropbox (Dropbox Support, adding more as well!)
+--- Adding/Removing/Configuring/Repairing Builds.txt File!
+--- Automatically Fix Shared Links and fix URL's within builds.txt
