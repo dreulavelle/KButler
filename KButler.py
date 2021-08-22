@@ -553,17 +553,17 @@ def clean_db_router(clean: str) -> None:
     def clean_resolvers():
         pass
 
-    if clean is 'all':
+    if clean == 'all':
         clean_cache()
         clean_thumbs()
         clean_dbs()
-    elif clean is 'cache':
+    elif clean == 'cache':
         clean_cache()
-    elif clean is 'thumbnails':
+    elif clean == 'thumbnails':
         clean_thumbs()
-    elif clean is 'databases':
+    elif clean == 'databases':
         clean_dbs()
-    elif clean is 'resolvers':
+    elif clean == 'resolvers':
         clean_resolvers()
     else:
         return
