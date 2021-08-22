@@ -22,9 +22,6 @@ try: # Set Variables. [WARNING] ONLY change if you know what you're doing!
     userdata_path = path.expandvars('%appdata%\Kodi\\userdata\\')
     addons_path = path.expandvars('%appdata%\Kodi\\addons\\')
     desktop = path.expandvars('%userprofile%\Desktop\\')
-    retain_base = ['addons', 'userdata'] # can be cleaned up # TODO
-    remove_addons = ['packages', 'temp'] # can be cleaned up # TODO
-    remove_userdata = ['Thumbnails', 'Savestates', 'playlists'] # can be cleaned up # TODO
     uploadzip = int(config['SETTINGS']['uploadzip']) # TODO
     uploadbuildtxt = int(config['SETTINGS']['uploadbuildtxt']) # TODO
     db_token = config['DROPBOX']['db_token']
