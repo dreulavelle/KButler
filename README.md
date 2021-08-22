@@ -14,3 +14,7 @@ Make sure to edit config_example.ini AND rename to config.ini before running KBu
 pip install -r requirements.txt
 python KButler.py
 ```
+
+## Requirements
+
+Must have atleast Kodi version 19.0 installed as well as latest version of Python 3.

@@ -1,13 +1,11 @@
-from os import path, environ, chdir, listdir, remove, walk, unlink
+from os import path, environ, remove, walk, unlink
 from re import sub
-from time import sleep
 from psutil import process_iter
 from shutil import rmtree
 from zipfile import ZIP_DEFLATED, ZipFile
 from paramiko import Transport, SFTPClient
-from dropbox import Dropbox, exceptions, files
-from dropbox.files import UploadSessionCursor, CommitInfo, WriteMode
-from dropbox.exceptions import ApiError, AuthError
+from dropbox import Dropbox, files
+from dropbox.files import WriteMode
 from bs4 import BeautifulSoup
 from requests import get
 from tqdm import tqdm
@@ -539,6 +537,7 @@ def clean_databases(simple: bool) -> True:
             if f in dbfiles:
                 file = path.join(root, f)
                 unlink(file)
+                print(f'- Removing {file} Database')
     print('Cleaning Thumbnails\n')
     try: rmtree(thumb_dir) 
     except FileNotFoundError as nf: pass
