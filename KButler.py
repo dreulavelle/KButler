@@ -490,8 +490,10 @@ def remove_build():  # works with local %temp%/build.txt
     build = name.removeprefix('"').removesuffix('"')
     print(f'[DONE] Removed Successfully: {build}')
 
-def craft_build(entries):
-    if len(entries) > 0:
+def craft_build(entries: dict) -> None:
+    if entries is None or len(entries) > 0:
+        print("No Entries Found. No File Possibly?")
+    else:
         write_list = []
         for e, v in entries.items():
             name = f'\nname={e}\n'
@@ -509,8 +511,6 @@ def craft_build(entries):
             upload_build_file()
         else:
             return
-    else:
-        print("No Entries Found. No File Possibly?")
 
 def builds_qty(): # returns int
     return len(fetch_builds())
