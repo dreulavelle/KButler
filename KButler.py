@@ -510,10 +510,32 @@ def craft_build(entries: dict) -> None:
 def builds_qty(): # returns int
     return len(fetch_builds())
 
-def clean_databases(simple: bool) -> True:
-    if is_running: 
-        kill_kodi()
-    if simple is False:
+def clean_db_router(clean: str) -> None:
+    if clean is not None:
+        if is_running: 
+            kill_kodi()
+    else:
+        return
+    
+    def clean_cache():
+        print('Purging Database Caches')
+        dbfiles = ['cache.db', 'meta.db', 'meta.5.db', 'cache.providers.13.db', 
+                   'torrentScrape.db', 'simplecache.db', 'metadata.db', 'search.db',
+                   'traktSync.db']
+        db_loc = path.join(userdata_path, 'addon_data')
+        for root, dirs, files in walk(db_loc):
+            for f in files:
+                if f in dbfiles:
+                    file = path.join(root, f)
+                    unlink(file)
+                    print(f'- Removing {file} Database')
+    
+    def clean_thumbs():
+        print('Cleaning Thumbnails\n')
+        try: rmtree(thumb_dir) 
+        except FileNotFoundError as nf: pass
+
+    def clean_dbs():
         print('\n[WARNING] This will remove these Databases:')
         print('[WARNING] TV*.db, Textures*.db, Epg*.db')
         print('[WARNING] Please make backups before running!') # TODO
@@ -526,49 +548,53 @@ def clean_databases(simple: bool) -> True:
                 if files.startswith(tuple(includes)):
                     remove(path.join(dirpath, files))
                     print(f'- Removing {files} Database')
-    print('Purging Database Caches')
-    dbfiles = ['cache.db', 'meta.db', 'meta.5.db', 'cache.providers.13.db', 'torrentScrape.db', 'simplecache.db']
-    db_loc = path.join(userdata_path, 'addon_data')
-    for root, dirs, files in walk(db_loc):
-        for f in files:
-            if f in dbfiles:
-                file = path.join(root, f)
-                unlink(file)
-                print(f'- Removing {file} Database')
-    print('Cleaning Thumbnails\n')
-    try: rmtree(thumb_dir) 
-    except FileNotFoundError as nf: pass
+        clean_thumbs()
+
+    def clean_resolvers():
+        pass
+
+    if clean is 'all':
+        clean_cache()
+        clean_thumbs()
+        clean_dbs()
+    elif clean is 'cache':
+        clean_cache()
+    elif clean is 'thumbnails':
+        clean_thumbs()
+    elif clean is 'databases':
+        clean_dbs()
+    elif clean is 'resolvers':
+        clean_resolvers()
     else:
         return
 
 def adv_settings():
     pass
 
-def purge_kodi():
+def db_purge_menu():
     while True:
         print()
         print('~' * 25)
-        print('  Kodi Clean-Up  ')
+        print('  Database Menu  ')
         print('~' * 25)
         print('1. Clean All')
         print('2. Clean Cache')
-        print('3. Clean Packages')
-        print('4. Clean Thumbnails')
-        print('5. Clean Databases')
-        print('6. Clean Resolvers')
-        print('7. Exit')
+        print('3. Clean Thumbnails')
+        print('4. Clean Databases')
+        print('5. Clean Resolvers')
+        print('6. Exit')
         print('~' * 25)
-        choice = valid_choice('Option: ', 7)
+        choice = valid_choice('Option: ', 6)
         if choice == 1:
-            pass
+            clean_db_router('all')
         elif choice == 2:
-            pass
+            clean_db_router('cache')
         elif choice == 3:
-            pass
+            clean_db_router('thumbnails')
         elif choice == 4:
-            pass
+            clean_db_router('databases')
         elif choice == 5:
-            clean_databases()
+            clean_db_router('resolvers')
         elif choice == 6:
             pass
         else:
@@ -603,14 +629,14 @@ def kodi_maint():
         print('~' * 25)
         print('  Kodi Maintenance  ')
         print('~' * 25)
-        print('1. Purge Menu')
+        print('1. Database Menu')
         print('2. Auths Menu')
         print('3. Advanced Settings')
         print('4. Go Back')
         print('~' * 25)
         choice = valid_choice('Option: ', 4)
         if choice == 1:
-            purge_kodi()
+            db_purge_menu()
         elif choice == 2:
             purge_auths()
         elif choice == 3:
