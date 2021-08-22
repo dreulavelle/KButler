@@ -9,6 +9,7 @@
 test*
 resources
 logs
+.vscode
 
 # Python
 __pycache__/
@@ -26,6 +27,7 @@ env.bak/
 venv.bak/
 
 ### VisualStudioCode ###
+.vscode
 .vscode/*
 !.vscode/settings.json
 !.vscode/tasks.json

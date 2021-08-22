@@ -1,4 +1,4 @@
-from os import path, environ, chdir, listdir, remove, walk
+from os import path, environ, chdir, listdir, remove, walk, unlink
 from re import sub
 from time import sleep
 from psutil import process_iter
@@ -14,7 +14,7 @@ from tqdm import tqdm
 from configparser import ConfigParser
 import xml.etree.ElementTree as ET
 
-VERSION = '0.6.7'
+VERSION = '0.6.8'
 
 try: # Set Variables. [WARNING] ONLY change if you know what you're doing!
     config = ConfigParser()
@@ -71,7 +71,7 @@ def valid_choice(msg, exit_opt=10): # returns an integer
         except ValueError:
             print(f'Please choose between 1 and {exit_opt}.')
 
-def valid_yn(msg): # returns 'Y' or 'N'
+def valid_yn(msg: str) -> None: # returns 'Y' or 'N'
     while True:
         try:
             option = input(msg)
@@ -91,47 +91,45 @@ def kill_kodi():
             if 'kodi' in proc.name():
                 proc.kill()
 
-def clean_kodi():
-    print('- Base Files')
-    chdir(kodipath)
-    for item in listdir(kodipath):
-        if item not in retain_base:
-            try:
-                remove(item)
-            except:
-                rmtree(kodipath + item)
-    print('- Addons Path Files')
-    chdir(addons_path)
-    for item in listdir(addons_path):
-        if item in remove_addons:
-            rmtree(addons_path + item)
-    print('- Userdata Path Files')
-    chdir(userdata_path)
-    for item in listdir(userdata_path):
-        if item in remove_userdata:
-            rmtree(userdata_path + item)
-    chdir(desktop)
-    print('Cleaning Done\n')
-
 # def clean_kodi():
-#     exclusions = ['addons', 'media', 'userdata', 'kodi.']
-#     for root, dirs, files in walk(kodipath):
-#         file_count = 0
-#         file_count += len(files)
-#         if file_count > 0:            
-#             for f in files:
-#                 if not any(e in f for e in exclusions):
-#                     unlink(path.join(root, f))
-#                 else:
-#                     print(f"purgeHome Excluding '{f}'.")
-#             for d in dirs:
-#                 if not any(e in d for e in exclusions):
-#                     rmtree(path.join(root, d))
-#                 else:
-#                     print(f"purgeHome Excluding '{d}'.")
-#         break
+#     print('- Base Files')
+#     chdir(kodipath)
+#     for item in listdir(kodipath):
+#         if item not in retain_base:
+#             try:
+#                 remove(item)
+#             except:
+#                 rmtree(kodipath + item)
+#     print('- Addons Path Files')
+#     chdir(addons_path)
+#     for item in listdir(addons_path):
+#         if item in remove_addons:
+#             rmtree(addons_path + item)
+#     print('- Userdata Path Files')
+#     chdir(userdata_path)
+#     for item in listdir(userdata_path):
+#         if item in remove_userdata:
+#             rmtree(userdata_path + item)
+#     chdir(desktop)
+#     print('Cleaning Done\n')
 
-def zip_kodi(zipname_path=None):
+def clean_kodi():
+    exclusions = ['addons', 'media', 'userdata']
+    includes = ['Thumbnails', 'packages', 'temp']
+    for root, dirs, files in walk(kodipath):
+        file_count = 0
+        file_count += len(files) 
+        if file_count > 0:
+            #print(dirs)            
+            for f in files:
+                if not any(e in f for e in exclusions):
+                    unlink(path.join(root, f))
+            for d in dirs:
+                if not any(e in d for e in exclusions):
+                    rmtree(path.join(root, d))
+        break
+
+def zip_kodi(zipname_path: str) -> None:
     if zipname_path is None or path.isdir(zipname_path):
         print("No File Given to Zip. Closing.")
         return
@@ -161,7 +159,7 @@ def fetch_builds():
                 else:
                     data[1] = sub(r'\?dl', '?dl=1"', data[1])
                     entries[current_name][data[0]] = data[1]
-                    try: 
+                    try:
                         filename = path.basename(data[1]).replace('?dl=1"', '')
                         if filename.endswith('.zip'):
                             entries[current_name]['filename'] = filename
@@ -173,7 +171,7 @@ def fetch_builds():
                             entries[current_name]['filename'] = filename
     return entries
 
-def fetch_urls(show=False):
+def fetch_urls(show: bool) -> False:
     builds = fetch_builds()
     urls = {}
     for n, data in builds.items():
@@ -203,7 +201,7 @@ def return_key_to_change():
             key = items
     return key
 
-def return_option_from_builds(show=False):
+def return_option_from_builds(show: bool) -> False:
     # using remote builds.txt file
     # returns: index, name, version, url, description
     print('\nPlease Select an Item')
@@ -248,19 +246,19 @@ def filename_from_dbox():
 
     return fname, path
 
-def change_build_entry(name=None, key=None, value=None, entries=None):
+def change_build_entry(name: str, key: str, value: str, entries: dict) -> None:
     # name = "name" in builds.txt (with quotes)
     # key = key to change
     # value = value to change
     # entries = builds.txt dict
-    if name is None or key is None or value is None or entries is None:
-        return
+    if (name or key or value or entries) is None:
+        return "[ERROR] Missing or Incorrect Argument"
     values = entries[name]
     if key in values:
         values[key] = value
         entries = values
     else:
-        return
+        return "[ERROR] Key not found in entry"
 
 def change_entry():
     entries = fetch_builds()
@@ -285,7 +283,7 @@ def get_shared_links_db():
             dbox_shared[name]['url'] = sub(r'\?dl\=0', '?dl=1', link.url)
     return dbox_shared
 
-def create_share_link(remote_filepath, show=False):
+def create_share_link(remote_filepath: str, show: bool) -> None or False:
     dbx = Dropbox(db_token)
     link = dbx.sharing_create_shared_link(remote_filepath)
     url = link.url
@@ -354,9 +352,11 @@ def url_from_dbox_option():
     else:
         return url
 
-def dbox_upload(local_path, remote_path):
+def dbox_upload(local_path: str, remote_path: str) -> None:
     # local_path points to directory + filename
     # remote_path points to directory + filename
+    if local_path or remote_path is None:
+        return "[ERROR] Missing or Incorrect Argument"
     dbx = Dropbox(db_token, timeout=900)
     with open(local_path, "rb") as f:
         file_size = path.getsize(local_path)
@@ -515,24 +515,33 @@ def craft_build(entries):
 def builds_qty(): # returns int
     return len(fetch_builds())
 
-def clean_databases():
-    print('\n[WARNING] This will remove these Databases:')
-    print('[WARNING] TV*.db, Textures*.db, Epg*.db, MyMusic*.db, MyVideos*.db')
-    print('[WARNING] Please make backups before running!') # TODO
-    run = valid_yn("\nWould you like to continue? Y/N: ").upper()
-    if run == 'Y':
-        print('\nCleaning Databases')
-        if is_running: 
-            kill_kodi()
-        includes = ['TV', 'Textures', 'Epg', 'MyMusic', 'MyVideos']
+def clean_databases(simple: bool) -> True:
+    if is_running: 
+        kill_kodi()
+    if simple is False:
+        print('\n[WARNING] This will remove these Databases:')
+        print('[WARNING] TV*.db, Textures*.db, Epg*.db')
+        print('[WARNING] Please make backups before running!') # TODO
+        run = valid_yn("\nWould you like to continue? Y/N: ").upper()
+        if run == 'Y':
+            print('\nRemoving Extra Databases')
+        includes = ['TV', 'Textures', 'Epg']
         for dirpath, dirnames, filenames in walk(dbase):
             for files in filenames:
                 if files.startswith(tuple(includes)):
                     remove(path.join(dirpath, files))
                     print(f'- Removing {files} Database')
-        print('Cleaning Thumbnails\n')
-        try: rmtree(thumb_dir) 
-        except FileNotFoundError as nf: pass
+    print('Purging Database Caches')
+    dbfiles = ['cache.db', 'meta.db', 'meta.5.db', 'cache.providers.13.db', 'torrentScrape.db', 'simplecache.db']
+    db_loc = path.join(userdata_path, 'addon_data')
+    for root, dirs, files in walk(db_loc):
+        for f in files:
+            if f in dbfiles:
+                file = path.join(root, f)
+                unlink(file)
+    print('Cleaning Thumbnails\n')
+    try: rmtree(thumb_dir) 
+    except FileNotFoundError as nf: pass
     else:
         return
 
