@@ -1,4 +1,4 @@
-from os import path, environ, remove, walk, unlink
+from os import path, environ, remove, walk, unlink, listdir
 from re import sub
 from psutil import process_iter
 from shutil import rmtree
@@ -17,11 +17,18 @@ VERSION = '0.6.8'
 try: # Set Variables. [WARNING] ONLY change if you know what you're doing!
     config = ConfigParser()
     config.read('config.ini')
+    exclude_root = ['addons', 'userdata']
     kodipath = path.expandvars('%appdata%\Kodi\\')
     user = path.expandvars('%userprofile%')
     userdata_path = path.expandvars('%appdata%\Kodi\\userdata\\')
     addons_path = path.expandvars('%appdata%\Kodi\\addons\\')
+    addn_data = path.join(userdata_path, 'addon_data')
+    sources_file = path.join(userdata_path, 'sources.xml')
     desktop = path.expandvars('%userprofile%\Desktop\\')
+    temp_dir = environ.get('TEMP')
+    temp_build = path.join(temp_dir + "\\builds.txt")
+    dbase = path.join(userdata_path + "\\Database")
+    thumb_dir = path.join(userdata_path + "\\Thumbnails")
     uploadzip = int(config['SETTINGS']['uploadzip']) # TODO
     uploadbuildtxt = int(config['SETTINGS']['uploadbuildtxt']) # TODO
     db_token = config['DROPBOX']['db_token']
@@ -32,14 +39,10 @@ try: # Set Variables. [WARNING] ONLY change if you know what you're doing!
     sftp_password = config['SFTP']['sftp_password']
     sftp_remotepath = config['SFTP']['sftp_remotepath']
     sftp_remotebuilds = config['DROPBOX']['sftp_remotebuilds']
-    temp_dir = environ.get('TEMP')
-    temp_build = path.join(temp_dir + "\\builds.txt")
-    dbase = path.join(userdata_path + "\\Database")
-    thumb_dir = path.join(userdata_path + "\\Thumbnails")
 except: 
     print('[ERROR] config.ini File Missing. Exiting!')
     print('You can get an example config.ini at:')
-    print('###  https://github.com/dreulavelle/KButler/blob/KButler/config_example.ini')
+    print('https://github.com/dreulavelle/KButler/blob/KButler/config_example.ini')
     print('Save this to the same directory as this program and rename to config.ini')
     print('[WARNING] Make sure to edit the values! Then you should be all set!')
     exit()
@@ -51,20 +54,20 @@ else:
 
 is_running = "kodi.exe" in (p.name() for p in process_iter())
 
-def valid_choice(msg, exit_opt=10): # returns an integer
+def valid_choice(msg: str, exit_opt: int) -> None: # returns an integer
     while True:
         try:
-            num = int(input(msg))
-            if num > exit_opt or num == 0 or num < 0:
-                print(f'Please choose between 1 and {exit_opt}.')
-            elif num < exit_opt:
-                return num
-            elif num == exit_opt:
-                return exit_opt
+            num = input(msg)
+            if num.upper() == 'C':
+                return 'C'
+            elif int(num) > exit_opt or int(num) == 0 or int(num) < 0:
+                print(f'Please choose between 1 and {exit_opt}. Or C to Cancel')
+            elif int(num) <= exit_opt:
+                return int(num)
             else:
                 raise ValueError
         except ValueError:
-            print(f'Please choose between 1 and {exit_opt}.')
+            print(f'Please choose between 1 and {exit_opt}. Or C to Cancel')
 
 def valid_yn(msg: str) -> None: # returns 'Y' or 'N'
     while True:
@@ -86,49 +89,68 @@ def kill_kodi():
             if 'kodi' in proc.name():
                 proc.kill()
 
-# def clean_kodi():
-#     print('- Base Files')
-#     chdir(kodipath)
-#     for item in listdir(kodipath):
-#         if item not in retain_base:
-#             try:
-#                 remove(item)
-#             except:
-#                 rmtree(kodipath + item)
-#     print('- Addons Path Files')
-#     chdir(addons_path)
-#     for item in listdir(addons_path):
-#         if item in remove_addons:
-#             rmtree(addons_path + item)
-#     print('- Userdata Path Files')
-#     chdir(userdata_path)
-#     for item in listdir(userdata_path):
-#         if item in remove_userdata:
-#             rmtree(userdata_path + item)
-#     chdir(desktop)
-#     print('Cleaning Done\n')
+def choices_menu(options, msg='Make Selection'):
+    # options = list OR dict
+    print(f'\n   {msg}')
+    print('~' * 25)
+    for idx, item in enumerate(options):
+        idx += 1
+        print(f'{idx}. {item}')
+    print(f'C. Cancel')
+    print('~' * 25)
+    option = valid_choice('Option: ', idx)
+    if option == 'C':
+            return option
+    for idx, items in enumerate(options):
+        if option == idx + 1:
+            return items
 
 def clean_kodi():
-    exclusions = ['addons', 'media', 'userdata']
-    includes = ['Thumbnails', 'packages', 'temp']
-    for root, dirs, files in walk(kodipath):
-        file_count = 0
-        file_count += len(files) 
-        if file_count > 0:
-            #print(dirs)            
-            for f in files:
-                if not any(e in f for e in exclusions):
-                    unlink(path.join(root, f))
-            for d in dirs:
-                if not any(e in d for e in exclusions):
-                    rmtree(path.join(root, d))
-        break
+    print('\n[STARED] Cleaning Process')
+    print('- Checking Kodi Process')
+    if is_running:
+        kill_kodi()
+    print('- Cleaning Root Folder')
+    for item in listdir(kodipath):
+        if item not in exclude_root:
+            try: rmtree(path.join(kodipath, item))
+            except: unlink(path.join(kodipath, item))
+    print('- Cleaning Packages')
+    print('- Cleaning Temp')
+    adn_pkgs = path.join(addons_path, 'packages')
+    adn_temp = path.join(addons_path, 'temp')
+    rmdirs = [adn_pkgs, adn_temp]
+    for fld in rmdirs:
+        try: rmtree(fld)
+        except FileNotFoundError as f: pass
+    clean_thumbs('- Cleaning Thumbnails')
+    print('- Cleaning Caches')
+    clean_cache()
+    includes = ['Textures']
+    for dirpath, dirnames, filenames in walk(dbase):
+        for files in filenames:
+            if files.startswith(tuple(includes)):
+                print(f'-- Removing DB: {path.join(dirpath, files)}')
+                unlink(path.join(dirpath, files))
+    clean_thumbs()
+    print('[DONE] Cleaning Process\n')
+
+def fresh_install():
+    print('Fresh Install Kodi\n')
+    if is_running:
+        kill_kodi()
+    rmtree(kodipath)
+    return
+
+def return_mb_size(file):
+    size = path.getsize(file)
+    return print('File Size: ' + str(round(size / (1024 * 1024), 3)) + ' MB')
 
 def zip_kodi(zipname_path: str) -> None:
     if zipname_path is None or path.isdir(zipname_path):
         print("No File Given to Zip. Closing.")
         return
-    print(f"Zipping Kodi in: {zipname_path}")
+    print(f"Zipping Build in: {zipname_path}")
     length = len(kodipath)
     with ZipFile(zipname_path, 'w', allowZip64=True, compression=ZIP_DEFLATED) as zip:
         for root, dirs, files in walk(kodipath):
@@ -137,6 +159,8 @@ def zip_kodi(zipname_path: str) -> None:
                 zip.write(path.join(root, file), path.join(folder, file))
     name = path.basename(zipname_path)
     print(f'{name} Build Created!')
+    return_mb_size(zipname_path)
+    return
 
 def fetch_builds():
     # using remote builds.txt file
@@ -184,40 +208,27 @@ def fetch_urls(show: bool) -> False:
 def return_key_to_change():
     choices = ['name', 'version', 'url', 'minor', 'gui', 'kodi', 'theme', 
                'icon', 'fanart', 'preview', 'adult', 'info', 'description']
-    print('\nSelect Key To Change')
-    print('~' * 25)
-    for idx, item in enumerate(choices):
-        idx += 1
-        print(f'{idx}. {item}')
-    print('~' * 25)
-    option = valid_choice('Key: ', idx)
-    for idx, items in enumerate(choices):
-        if option == idx + 1:
-            key = items
-    return key
+    key = choices_menu(choices, msg='Select Key To Change')
+    if key == 'C':
+        return False
+    else:
+        return key
 
-def return_option_from_builds(show: bool) -> False:
+def return_option_from_builds(show=False):
     # using remote builds.txt file
     # returns: index, name, version, url, description
-    print('\nPlease Select an Item')
-    print('~' * 25)
     builds = fetch_builds()
-    for idx, item in enumerate(builds):
-        idx += 1
-        print(f'{idx}. {item}')
-    print('~' * 25)
-    option = valid_choice('Option: ', idx)
-    for idx, items in enumerate(builds):
-        if option == idx + 1:
-            name = items
-    index = option - 1
-    version = builds[name]['version']
-    url = builds[name]['url']
-    description = builds[name]['description']
-    if show:
-        stripped = name.removeprefix('"').removesuffix('"')
-        print(f'Build: {stripped}\nCurrent Version: {version}\nURL: {url}')
-    return index, name, version, url, description
+    name = choices_menu(builds)
+    if name == 'C':
+        return
+    else:
+        version = builds[name]['version']
+        url = builds[name]['url']
+        description = builds[name]['description']
+        if show:
+            stripped = name.removeprefix('"').removesuffix('"')
+            print(f'Build: {stripped}\nCurrent Version: {version}\nURL: {url}')
+        return name, version, url, description
 
 def filename_from_dbox():
     dbx = Dropbox(db_token, timeout=900)
@@ -242,10 +253,10 @@ def filename_from_dbox():
     return fname, path
 
 def change_build_entry(name: str, key: str, value: str, entries: dict) -> None:
-    # name = "name" in builds.txt (with quotes)
+    # name = build name in builds.txt
     # key = key to change
-    # value = value to change
-    # entries = builds.txt dict
+    # value = new value
+    # entries = builds.txt as dict
     if (name or key or value or entries) is None:
         return "[ERROR] Missing or Incorrect Argument"
     values = entries[name]
@@ -257,12 +268,19 @@ def change_build_entry(name: str, key: str, value: str, entries: dict) -> None:
 
 def change_entry():
     entries = fetch_builds()
-    dname = return_option_from_builds()[1]
+    name = return_option_from_builds(show=False)[0]
     key = return_key_to_change()
-    value = input("Change To: ")
+    if key == 'C':
+        return
+    rq_name = name.removeprefix('"').removesuffix('"')
+    oldkey = entries[name][key].removeprefix('"').removesuffix('"')
+    print(f'\nChanging {key.title()} for {rq_name}')
+    print(f'Old {key}: {oldkey}')
+    value = input(f'New {key}: ')
     change = f'"{value}"'
-    change_build_entry(dname, key, change, entries)
+    change_build_entry(name, key, change, entries)
     craft_build(entries)
+    print()
 
 def get_shared_links_db():
     dbox_shared = {}
@@ -294,7 +312,7 @@ def check_db_shares():
         url = v['url']
         if url is None:
             path = v['path']
-            try: create_share_link(path) # create urls if none exists
+            try: create_share_link(path, show=False) # create urls if none exists
             finally: missing_urls += 1
     if missing_urls > 0:
         print(f'Creating share links for {missing_urls} missing URLs in Dropbox.')
@@ -330,28 +348,25 @@ def automate_shared_links():
     else: print('All Links Working Correctly!')
 
 def url_from_dbox_option():
-    print('\nSelect Dropbox File')
-    print('~' * 25)
     dbox_shared = get_shared_links_db()
-    for idx, item in enumerate(dbox_shared):
-        idx += 1
-        print(f'{idx}. {item}')
-    print('~' * 25)
-    option = valid_choice('Option: ', idx)
-    for idx, items in enumerate(dbox_shared):
-        if option == idx + 1:
-            name = items
+    name = choices_menu(dbox_shared)
+    if name == 'C':
+        return
     url = dbox_shared[name]['url']
-    if url == None:
+    if url is None:
         return "Shared Link Does Not Exist"
     else:
         return url
 
-def dbox_upload(local_path: str, remote_path: str) -> None:
+def dbox_upload(local_path, remote_path):
     # local_path points to directory + filename
     # remote_path points to directory + filename
-    if local_path or remote_path is None:
-        return "[ERROR] Missing or Incorrect Argument"
+    if local_path is None:
+        return "[ERROR] Missing local path"
+    elif remote_path is None:
+        return "[ERROR] Missing remote path"
+    else:
+        pass
     dbx = Dropbox(db_token, timeout=900)
     with open(local_path, "rb") as f:
         file_size = path.getsize(local_path)
@@ -386,19 +401,14 @@ def dbox_upload_router():
         fname = (f'{name}.zip')
     else:
         fname = filename_from_dbox() # TODO
+    clean_kodi()
     print('Starting Upload Process')
-    tmp_build = path.join(f'{temp_dir}' + f'\\{fname}')
-    if path.exists(tmp_build):
-        remove(tmp_build)
-    print('Zipping Kodi For Upload')
+    tmp_build = path.join(temp_dir, fname[0])
     zip_kodi(tmp_build)
-    rloc = (f'{sftp_remotebuilds}{fname}')
     print('Starting Dropbox Upload')
-    dbox_upload(tmp_build, rloc)
-    print(f'{fname} Uploaded Successfully!')
-    print(f'Removing: {tmp_build}')
+    dbox_upload(tmp_build, fname[1])
+    print(f'{fname[0]} Uploaded Successfully!\n')
     remove(tmp_build)
-    print('Upload Complete.\n')
 
 def upload_build_file():
     try:
@@ -439,7 +449,6 @@ def delete_dbox_file():
     for idx, items in enumerate(paths):
         if option == idx + 1:
             path = items
-
     print(f'[WARNING] Removing {item}')
     dbx.files_delete_v2(path)
     print(f'[DONE] Removed Successfully: {item}')
@@ -464,7 +473,7 @@ def create_new_build_entry():
     version = f'"{input("Version: ")}"'
     print('Point to filename:')
     filename = filename_from_dbox()[1]
-    url = f'"{create_share_link(filename)}"'
+    url = f'"{create_share_link(filename, show=False)}"'
     print(f'Share Link Created for {name}: {url}')
     print(f'Pointing {name} to {filename}')
     icon = return_default_on_empty("[Press Enter To Skip] Paste Icon URL: ")
@@ -479,14 +488,14 @@ def create_new_build_entry():
 
 def remove_build():  # works with local %temp%/build.txt
     entries = fetch_builds()
-    name = return_option_from_builds()[1]
+    name = return_option_from_builds(show=False)[0]
     del entries[name]
     craft_build(entries)
     build = name.removeprefix('"').removesuffix('"')
     print(f'[DONE] Removed Successfully: {build}')
 
 def craft_build(entries: dict) -> None:
-    if entries is None or len(entries) > 0:
+    if entries is None or len(entries) == 0:
         print("No Entries Found. No File Possibly?")
     else:
         write_list = []
@@ -510,45 +519,97 @@ def craft_build(entries: dict) -> None:
 def builds_qty(): # returns int
     return len(fetch_builds())
 
+def clean_cache():
+        dbfiles = ['cache.db', 'meta.db', 'meta.5.db', 'cache.providers.13.db', 
+                   'torrentScrape.db', 'simplecache.db', 'metadata.db', 'search.db',
+                   'traktSync.db', 'cache.v', 'fanarttv.db', 'cache.sqlite']
+        db_loc = path.join(userdata_path, 'addon_data')
+        for root, dirs, files in walk(db_loc):
+            for f in files:
+                if f in dbfiles:
+                    file = path.join(root, f)
+                    print(f'-- Removing DB: {file}')
+                    unlink(file)
+
+def clean_thumbs(msg=None):
+        if msg is not None: print(msg)
+        try: rmtree(thumb_dir) 
+        except FileNotFoundError as nf: pass
+
+def clean_dbs():
+        print('\n[WARNING] This will remove these Databases:')
+        print('[WARNING] TV*.db, Textures*.db, Epg*.db')
+        print('[WARNING] Please make backups before running!') # TODO
+        run = valid_yn("\nWould you like to continue? Y/N: ").upper()
+        if run == 'Y':
+            print('\n- Removing Extra Databases')
+            includes = ['Textures', 'TV', 'Epg']
+            for dirpath, dirnames, filenames in walk(dbase):
+                for files in filenames:
+                    if files.startswith(tuple(includes)):
+                        remove(path.join(dirpath, files))
+                        print(f'-- Removing {files} Database')
+            clean_thumbs()
+        else:
+            return
+
+def return_settings_paths():
+    # returns all filepaths with 'settings.xml'
+    settings_paths = []
+    for root, dirs, files in walk(addn_data):
+        for f in files:
+            if 'settings.xml' in f:
+                settings_paths.append(path.join(root, f))
+    return settings_paths
+
+def return_auth_tokens(use='all'):
+    # returns tokens to use for clearing auths
+    debrid_tokens = ['rd.username', 'rd.premiumstatus', 'rd.auth', 'rd.refresh', 
+                     'rd.client_id', 'realdebrid.client_id', 'realdebrid.refresh',
+                     'rd.expiry', 'rd.secret', 'realdebrid.token', 'realdebrid.username', 
+                     'realdebrid.secret', 'alldebrid.token', 'alldebrid.username', 
+                     'premiumize.token', 'premiumize.username']
+
+    trakt_tokens = ['trakt.token', 'trakt.username', 'trakt.refresh', 
+                    'trakt.expires', 'trakt.authtrakt', 'trakt.clientid', 
+                    'trakt.secret', 'trakt.auth']
+
+    all_tokens = debrid_tokens + trakt_tokens
+
+    if use == 'all':
+        return all_tokens
+    elif use == 'debrid':
+        return debrid_tokens
+    elif use == 'trakt':
+        return trakt_tokens
+    else:
+        return 'Must define whether to use trakt, debrid, or all'
+
+def auth_scrub(settings_paths, tokens):
+    # clears auths using tokens, in settings_paths
+    print('\n[STARTED] Scrubbing Auths')
+    for path in settings_paths:
+        tree = ET.parse(path)
+        root = tree.getroot()
+        for elm in root.iter('setting'):
+            id = elm.attrib['id']
+            value = elm.text
+            if id in tokens:
+                if value is not None:
+                    elm.text = None
+                    tree.write(path)
+    print('- Cleaning Caches')
+    clean_cache()
+    print('- Cleaning Thumbnails')
+    clean_thumbs()
+    print('[DONE] Scrub Complete\n')
+
 def clean_db_router(clean: str) -> None:
     if clean is not None:
         if is_running: 
             kill_kodi()
     else:
         return
-    
-    def clean_cache():
-        print('Purging Database Caches')
-        dbfiles = ['cache.db', 'meta.db', 'meta.5.db', 'cache.providers.13.db', 
-                   'torrentScrape.db', 'simplecache.db', 'metadata.db', 'search.db',
-                   'traktSync.db']
-        db_loc = path.join(userdata_path, 'addon_data')
-        for root, dirs, files in walk(db_loc):
-            for f in files:
-                if f in dbfiles:
-                    file = path.join(root, f)
-                    unlink(file)
-                    print(f'- Removing {file} Database')
-    
-    def clean_thumbs():
-        print('Cleaning Thumbnails\n')
-        try: rmtree(thumb_dir) 
-        except FileNotFoundError as nf: pass
-
-    def clean_dbs():
-        print('\n[WARNING] This will remove these Databases:')
-        print('[WARNING] TV*.db, Textures*.db, Epg*.db')
-        print('[WARNING] Please make backups before running!') # TODO
-        run = valid_yn("\nWould you like to continue? Y/N: ").upper()
-        if run == 'Y':
-            print('\nRemoving Extra Databases')
-        includes = ['TV', 'Textures', 'Epg']
-        for dirpath, dirnames, filenames in walk(dbase):
-            for files in filenames:
-                if files.startswith(tuple(includes)):
-                    remove(path.join(dirpath, files))
-                    print(f'- Removing {files} Database')
-        clean_thumbs()
 
     def clean_resolvers():
         pass
@@ -557,16 +618,34 @@ def clean_db_router(clean: str) -> None:
         clean_cache()
         clean_thumbs()
         clean_dbs()
+        clean_resolvers()
     elif clean == 'cache':
         clean_cache()
     elif clean == 'thumbnails':
-        clean_thumbs()
+        clean_thumbs('Cleaning Thumbnails')
     elif clean == 'databases':
         clean_dbs()
     elif clean == 'resolvers':
         clean_resolvers()
     else:
-        return
+        return "[ERROR] No Option Selected"
+    return
+
+def dbox_menu():
+    while True:
+        print()
+        print('~' * 25)
+        print('  Dropbox Menu  ')
+        print('~' * 25)
+        print('1. Delete Remote Build')
+        print('2. Go Back')
+        print('~' * 25)
+        choice = valid_choice('Option: ', 2)
+        if choice == 1:
+            delete_dbox_file()
+        else:
+            print('\nExiting KButler.\n')
+            break
 
 def adv_settings():
     pass
@@ -595,8 +674,6 @@ def db_purge_menu():
             clean_db_router('databases')
         elif choice == 5:
             clean_db_router('resolvers')
-        elif choice == 6:
-            pass
         else:
             print('\nExiting KButler.\n')
             break
@@ -614,11 +691,17 @@ def purge_auths():
         print('~' * 25)
         choice = valid_choice('Option: ', 4)
         if choice == 1:
-            pass
+            settings_paths = return_settings_paths()
+            tokens = return_auth_tokens(use='all')
+            auth_scrub(settings_paths, tokens)
         elif choice == 2:
-            pass
+            settings_paths = return_settings_paths()
+            tokens = return_auth_tokens(use='trakt')
+            auth_scrub(settings_paths, tokens)
         elif choice == 3:
-            pass
+            settings_paths = return_settings_paths()
+            tokens = return_auth_tokens(use='debrid')
+            auth_scrub(settings_paths, tokens)
         else:
             print('\nExiting KButler.\n')
             break
@@ -674,7 +757,7 @@ def configure_build():
             automate_shared_links()
         elif choice == 6:
             upload_build_file()
-        elif choice == 6:
+        elif choice == 7:
             delete_build_file()
         else:
             print('\nExiting KButler.\n')
@@ -689,15 +772,12 @@ def main():
         print('2. Upload Build Zip')
         print('3. Configure Builds')
         print('4. Kodi Maintenance')
-        print('5. Exit')
+        print('5. Dropbox Menu')
+        print('6. Fresh Install')
+        print('7. Exit')
         print('~' * 25)
-        choice = valid_choice('Option: ', 5)
+        choice = valid_choice('Option: ', 7)
         if choice == 1:
-            print('\nCleaning Process Started')
-            print('- Checking Kodi Process')
-            if is_running:
-                kill_kodi()
-            print('- Cleaning Kodi Folder')
             clean_kodi()
         elif choice == 2:
             dbox_upload_router()
@@ -705,6 +785,10 @@ def main():
             configure_build()
         elif choice == 4:
             kodi_maint()
+        elif choice == 5:
+            dbox_menu()
+        elif choice == 6:
+            fresh_install()
         else:
             break
 

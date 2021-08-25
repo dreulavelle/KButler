@@ -1,15 +1,17 @@
-# Project Files
+# Include Project Files
+!changelog.txt
+!config_example.ini
+!requirements.txt
+
+# Exclude Project Files
 *.txt
 *.ini
 *.cfg
 *.log
-!changelog.txt
-!config_example.ini
-!requirements.txt
+*.xml
 test*
 resources
 logs
-.vscode
 
 # Python
 __pycache__/
@@ -28,11 +30,6 @@ venv.bak/
 
 ### VisualStudioCode ###
 .vscode
-.vscode/*
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
 *.code-workspace
 
 # Local History for Visual Studio Code
