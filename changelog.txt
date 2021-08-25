@@ -1,3 +1,9 @@
+Version: 0.7.2
+- Added functionality for purging Trakt & Debrid auths.
+- refactored a little bit for readability. [Still more to tidy up]
+- touched up menus slightly
+- # TODO: Fix menu's to display correct process for developing builds
+
 Version: 0.6.7
 - Initial working version. (Unreleased still) 
 - Features include:
