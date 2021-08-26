@@ -570,9 +570,15 @@ def return_auth_tokens(use='all'):
                      'realdebrid.secret', 'alldebrid.token', 'alldebrid.username', 
                      'premiumize.token', 'premiumize.username']
 
-    trakt_tokens = ['trakt.token', 'trakt.username', 'trakt.refresh', 
-                    'trakt.expires', 'trakt.authtrakt', 'trakt.clientid', 
-                    'trakt.secret', 'trakt.auth']
+    trakt_tokens = ['trakt.token', 'trakt.username', 'trakt.refresh', 'trakt.authtrakt', 
+                    'trakt.clientid', 'trakt.secret', 'trakt.auth', 'trakt.isauthed']
+
+    api_tokens = ['tvdb.api.key', 'fanart.tv.api.key', 'tmdb.api.key', 'tmdb.username', 
+                  'tmdb.password', 'tmdb.session_id', 'imdb.user', 'tvdb.jw', 'tvdb.expiry', 
+                  'furk.username', 'furk.password', 'furk.api.key', 'easynews.username', 
+                  'easynews.password', 'gdrive.cloudflare_url', 'ororo.email', 'ororo.password',
+                  'filepursuit.api.key', 'fanart.apikey', 'omdb.apikey', 'tvdb.apikey',
+                  'tmdb.apikey']
 
     all_tokens = debrid_tokens + trakt_tokens
 
@@ -582,12 +588,17 @@ def return_auth_tokens(use='all'):
         return debrid_tokens
     elif use == 'trakt':
         return trakt_tokens
+    elif use == 'api':
+        return api_tokens
     else:
         return 'Must define whether to use trakt, debrid, or all'
 
 def auth_scrub(settings_paths, tokens):
     # clears auths using tokens, in settings_paths
     print('\n[STARTED] Scrubbing Auths')
+    if is_running:
+        kill_kodi()
+    
     for path in settings_paths:
         tree = ET.parse(path)
         root = tree.getroot()
@@ -597,12 +608,14 @@ def auth_scrub(settings_paths, tokens):
             if id in tokens:
                 if value is not None:
                     elm.text = None
-                    tree.write(path)
+                    elm.attrib = {"id": id, "default": "true"}
+                    print(elm.attrib, value)
+                    #tree.write(path)
     print('- Cleaning Caches')
     clean_cache()
     print('- Cleaning Thumbnails')
     clean_thumbs()
-    print('[DONE] Scrub Complete\n')
+    print('[DONE] Scrub Complete')
 
 def clean_db_router(clean: str) -> None:
     if clean is not None:
@@ -661,7 +674,7 @@ def db_purge_menu():
         print('3. Clean Thumbnails')
         print('4. Clean Databases')
         print('5. Clean Resolvers')
-        print('6. Exit')
+        print('6. Go Back')
         print('~' * 25)
         choice = valid_choice('Option: ', 6)
         if choice == 1:
