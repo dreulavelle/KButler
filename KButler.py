@@ -609,8 +609,7 @@ def auth_scrub(settings_paths, tokens):
                 if value is not None:
                     elm.text = None
                     elm.attrib = {"id": id, "default": "true"}
-                    print(elm.attrib, value)
-                    #tree.write(path)
+                    tree.write(path)
     print('- Cleaning Caches')
     clean_cache()
     print('- Cleaning Thumbnails')
