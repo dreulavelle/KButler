@@ -12,7 +12,7 @@ from tqdm import tqdm
 from configparser import ConfigParser
 import xml.etree.ElementTree as ET
 
-VERSION = '0.7.2'
+VERSION = '0.7.3'
 
 try: # Set Variables. [WARNING] ONLY change if you know what you're doing!
     config = ConfigParser()
@@ -41,7 +41,7 @@ try: # Set Variables. [WARNING] ONLY change if you know what you're doing!
     sftp_remotebuilds = config['DROPBOX']['sftp_remotebuilds']
 except: 
     print('[ERROR] config.ini File Missing. Exiting!')
-    print('You can get an example config.ini at:')
+    print('\nYou can get an example config.ini at:')
     print('https://github.com/dreulavelle/KButler/blob/KButler/config_example.ini')
     print('Save this to the same directory as this program and rename to config.ini')
     print('[WARNING] Make sure to edit the values! Then you should be all set!')
@@ -244,11 +244,15 @@ def filename_from_dbox():
         idx += 1
         print(f'{idx}. {item}')
     print('~' * 25)
-    option = valid_choice('Option: ', idx)
-    for idx, items in enumerate(fnames):
-        if option == idx + 1:
-            fname = items
-            path = paths[idx]
+    try: 
+        option = valid_choice('Option: ', idx)
+        for idx, items in enumerate(fnames):
+            if option == idx + 1:
+                fname = items
+                path = paths[idx]
+    except UnboundLocalError as ube:
+        print('No Builds Found In Folder.')
+        return False
 
     return fname, path
 
@@ -361,12 +365,14 @@ def url_from_dbox_option():
 def dbox_upload(local_path, remote_path):
     # local_path points to directory + filename
     # remote_path points to directory + filename
+    print(local_path, remote_path)
     if local_path is None:
         return "[ERROR] Missing local path"
     elif remote_path is None:
         return "[ERROR] Missing remote path"
     else:
         pass
+    print(local_path, remote_path)
     dbx = Dropbox(db_token, timeout=900)
     with open(local_path, "rb") as f:
         file_size = path.getsize(local_path)
@@ -394,13 +400,19 @@ def dbox_upload(local_path, remote_path):
                     pbar.update(chunk_size)
 
 def dbox_upload_router():
-    choice = valid_yn('Create New Build Name? Y/N: ').upper()
+    choice = valid_yn('\nCreate New Build Name? Y/N: ').upper()
     if choice == 'Y':
         name = input('Build Name: ')
         name = name.removeprefix('"').removesuffix('"')
         fname = (f'{name}.zip')
     else:
-        fname = filename_from_dbox() # TODO
+        try: 
+            fname = filename_from_dbox() # TODO
+            if fname == False:
+                return
+        except TypeError: 
+            print('Failed to create build.')
+            return
     clean_kodi()
     print('Starting Upload Process')
     tmp_build = path.join(temp_dir, fname[0])
@@ -445,10 +457,14 @@ def delete_dbox_file():
         item = item.rsplit('/')[2]
         print(f'{idx}. {item}')
     print('~' * 25)
-    option = valid_choice('Delete: ', idx)
-    for idx, items in enumerate(paths):
-        if option == idx + 1:
-            path = items
+    try: 
+        option = valid_choice('Delete: ', idx)
+        for idx, items in enumerate(paths):
+            if option == idx + 1:
+                path = items
+    except UnboundLocalError as ube:
+        print('No builds found to Delete.')
+        return
     print(f'[WARNING] Removing {item}')
     dbx.files_delete_v2(path)
     print(f'[DONE] Removed Successfully: {item}')
@@ -540,7 +556,7 @@ def clean_dbs():
         print('\n[WARNING] This will remove these Databases:')
         print('[WARNING] TV*.db, Textures*.db, Epg*.db')
         print('[WARNING] Please make backups before running!') # TODO
-        run = valid_yn("\nWould you like to continue? Y/N: ").upper()
+        run = valid_yn("Would you like to continue? Y/N: ").upper()
         if run == 'Y':
             print('\n- Removing Extra Databases')
             includes = ['Textures', 'TV', 'Epg']
@@ -562,7 +578,7 @@ def return_settings_paths():
                 settings_paths.append(path.join(root, f))
     return settings_paths
 
-def return_auth_tokens(use='all'):
+def return_auth_tokens(use='all', show=False):
     # returns tokens to use for clearing auths
     debrid_tokens = ['rd.username', 'rd.premiumstatus', 'rd.auth', 'rd.refresh', 
                      'rd.client_id', 'realdebrid.client_id', 'realdebrid.refresh',
@@ -582,8 +598,16 @@ def return_auth_tokens(use='all'):
 
     all_tokens = debrid_tokens + trakt_tokens
 
-    if use == 'all':
+    if use == 'all' and show:
         return all_tokens
+
+    if use == 'all':
+        print('[WARNING] Removes Trakt and Debrid Tokens!')
+        run = valid_yn("\n[WARNING] Would you like to continue? Y/N: ")
+        if run == 'Y':
+            return all_tokens
+        else:
+            return None
     elif use == 'debrid':
         return debrid_tokens
     elif use == 'trakt':
@@ -591,7 +615,7 @@ def return_auth_tokens(use='all'):
     elif use == 'api':
         return api_tokens
     else:
-        return 'Must define whether to use trakt, debrid, or all'
+        return 'Must define whether to use trakt, debrid, api or all'
 
 def auth_scrub(settings_paths, tokens):
     # clears auths using tokens, in settings_paths
@@ -615,6 +639,29 @@ def auth_scrub(settings_paths, tokens):
     print('- Cleaning Thumbnails')
     clean_thumbs()
     print('[DONE] Scrub Complete')
+
+def return_auths(use, show=False):
+    # returns addon_ID, token_id, token_value
+    settings_paths = return_settings_paths()
+    tokens = return_auth_tokens(use=use, show=True)
+    
+    for path in settings_paths:
+        tree = ET.parse(path)
+        root = tree.getroot()
+        for elm in root.iter('setting'):
+            id = elm.attrib['id']
+            value = elm.text
+            if id in tokens:
+                if value is not None:
+                    elm.text = None
+                    elm.attrib = {"id": id, "default": "true"}
+                    pth = path.split('\\')
+                    addon_id = pth[-2:][0]  # get addonID from filepath
+
+                    if show:
+                        print(addon_id, id, value)
+                    else:
+                        return addon_id, id, value
 
 def clean_db_router(clean: str) -> None:
     if clean is not None:
@@ -656,8 +703,7 @@ def dbox_menu():
         if choice == 1:
             delete_dbox_file()
         else:
-            print('\nExiting KButler.\n')
-            break
+            return
 
 def adv_settings():
     pass
@@ -687,8 +733,7 @@ def db_purge_menu():
         elif choice == 5:
             clean_db_router('resolvers')
         else:
-            print('\nExiting KButler.\n')
-            break
+            return
 
 def purge_auths():
     while True:
@@ -699,12 +744,17 @@ def purge_auths():
         print('1. Purge All Auths')
         print('2. Clear Trakt')
         print('3. Clear Debrid')
-        print('4. Go Back')
+        print('4. Clear API Tokens')
+        print('5. Show Trakt Tokens')
+        print('6. Show Debrid Tokens')
+        print('7. Go Back')
         print('~' * 25)
-        choice = valid_choice('Option: ', 4)
+        choice = valid_choice('Option: ', 7)
         if choice == 1:
             settings_paths = return_settings_paths()
             tokens = return_auth_tokens(use='all')
+            if tokens is None:
+                break
             auth_scrub(settings_paths, tokens)
         elif choice == 2:
             settings_paths = return_settings_paths()
@@ -714,9 +764,18 @@ def purge_auths():
             settings_paths = return_settings_paths()
             tokens = return_auth_tokens(use='debrid')
             auth_scrub(settings_paths, tokens)
+        elif choice == 4:
+            settings_paths = return_settings_paths()
+            tokens = return_auth_tokens(use='api')
+            auth_scrub(settings_paths, tokens)
+        elif choice == 5:
+            print()
+            return_auths(use='trakt', show=True)
+        elif choice == 6:
+            print()
+            return_auths(use='debrid', show=True)
         else:
-            print('\nExiting KButler.\n')
-            break
+            return
 
 def kodi_maint():
     while True:
@@ -737,8 +796,8 @@ def kodi_maint():
         elif choice == 3:
             adv_settings()
         else:
-            print('\nExiting KButler.\n')
-            break
+            print()
+            return
 
 def configure_build():
     while True:
@@ -772,11 +831,11 @@ def configure_build():
         elif choice == 7:
             delete_build_file()
         else:
-            print('\nExiting KButler.\n')
-            break
+            return
 
 def main():
     while True:
+        print()
         print('~' * 25)
         print(f'  Kodi Butler v{VERSION}  ')
         print('~' * 25)
